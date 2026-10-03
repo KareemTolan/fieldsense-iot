@@ -1,0 +1,15 @@
+# Secrets and generated files
+firmware/esp32/include/config.h
+deploy/mosquitto/certs/
+deploy/mosquitto/passwd
+.env
+
+# Build output
+bin/
+obj/
+.pio/
+__pycache__/
+.pytest_cache/
+*.user
+.vs/
+.vscode/

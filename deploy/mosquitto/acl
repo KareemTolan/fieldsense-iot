@@ -1,0 +1,17 @@
+# Each physical device logs in with username = its device id,
+# so it can only publish its own telemetry/status and read its own commands.
+pattern write fieldsense/devices/%u/telemetry
+pattern write fieldsense/devices/%u/status
+pattern read  fieldsense/devices/%u/commands
+
+# Simulator publishes on behalf of many simulated devices
+user simulator
+topic write fieldsense/devices/+/telemetry
+
+# Backend services
+user ingestion
+topic read fieldsense/devices/+/telemetry
+topic read fieldsense/devices/+/status
+
+user api
+topic write fieldsense/devices/+/commands

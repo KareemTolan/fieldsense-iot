@@ -1,0 +1,89 @@
+name: fieldsense
+
+x-service-env: &service-env
+  ConnectionStrings__Timescale: Host=timescaledb;Port=5432;Database=fieldsense;Username=fieldsense;Password=${DB_PASSWORD:-fieldsense}
+  ConnectionStrings__RabbitMq: amqp://fieldsense:${RABBIT_PASSWORD:-fieldsense}@rabbitmq:5672/
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports: ["8883:8883"]
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./mosquitto/certs:/mosquitto/certs:ro
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: fieldsense
+      POSTGRES_USER: fieldsense
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fieldsense}
+    ports: ["5432:5432"]
+    volumes:
+      - ./timescale/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - timescale-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fieldsense"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: fieldsense
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD:-fieldsense}
+    ports: ["5672:5672", "15672:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      retries: 10
+    restart: unless-stopped
+
+  ingestion:
+    build: { context: ../services, dockerfile: Dockerfile, args: { PROJECT: FieldSense.Ingestion } }
+    environment:
+      <<: *service-env
+      Ingestion__Source: ${INGESTION_SOURCE:-Mqtt}
+      Ingestion__Mqtt__Host: mosquitto
+      Ingestion__Mqtt__CaCertPath: /certs/ca.crt
+      Ingestion__Mqtt__Password: ${MQTT_INGESTION_PASSWORD:-ingestion-password}
+      Ingestion__AzureIoTHub__EventHubConnectionString: ${IOTHUB_EVENTHUB_CONNECTION_STRING:-}
+    volumes: ["./mosquitto/certs/ca.crt:/certs/ca.crt:ro"]
+    depends_on:
+      timescaledb: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      mosquitto: { condition: service_started }
+    deploy: { replicas: 2 }     # shared MQTT subscription splits load between replicas
+    restart: unless-stopped
+
+  alerts:
+    build: { context: ../services, dockerfile: Dockerfile, args: { PROJECT: FieldSense.Alerts } }
+    environment: *service-env
+    depends_on:
+      timescaledb: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    restart: unless-stopped
+
+  devices-api:
+    build: { context: ../services, dockerfile: Dockerfile, args: { PROJECT: FieldSense.DevicesApi } }
+    environment:
+      <<: *service-env
+      ASPNETCORE_HTTP_PORTS: "8080"
+      Jwt__Key: ${JWT_KEY:-CHANGE-ME-dev-only-key-at-least-32-characters-long}
+      Mqtt__Host: mosquitto
+      Mqtt__CaCertPath: /certs/ca.crt
+      Mqtt__Password: ${MQTT_API_PASSWORD:-api-password}
+    volumes: ["./mosquitto/certs/ca.crt:/certs/ca.crt:ro"]
+    ports: ["8080:8080"]
+    depends_on:
+      timescaledb: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  timescale-data:
