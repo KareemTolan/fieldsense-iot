@@ -12,7 +12,6 @@ MQTT over TLS, Azure IoT Hub, .NET 8 microservices, RabbitMQ and TimescaleDB.
 | Devices API | ASP.NET Core minimal API, JWT, RBAC, Swagger | `services/src/FieldSense.DevicesApi` |
 | Storage | TimescaleDB hypertable, compression, retention, continuous aggregates | `deploy/timescale` |
 | Broker | Eclipse Mosquitto, TLS, per-device ACL | `deploy/mosquitto` |
-| CI | GitHub Actions: .NET build/test, pytest, firmware build, Docker images | `.github/workflows` |
 
 See **[docs/architecture.md](docs/architecture.md)** for the diagram, data flow and security design.
 
